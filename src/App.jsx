@@ -214,7 +214,7 @@ export default function App() {
   const currentMonth = today.getMonth() + 1;
   const currentDate = today.getDate();
 
-  // 隙間計算（予定と予定の間を最優先）
+  // 隙間計算（現在時刻を考慮し、予定と予定の間を最優先）
   const getGaps = (currentSchedule) => {
     const sorted = [...currentSchedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
     const innerGaps = [];
@@ -222,30 +222,45 @@ export default function App() {
     const activeStart = timeToMinutes(activeRange.start);
     const activeEnd = timeToMinutes(activeRange.end);
 
+    // ★ 現在のリアルタイム時刻を取得
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // ★ 設定上の開始時刻か、現在時刻のどちらか「遅い方」を実質的なスタートラインとする
+    const effectiveStart = Math.max(activeStart, currentMinutes);
+
+    // すでに活動終了時刻を過ぎている場合は隙間なし
+    if (effectiveStart >= activeEnd) {
+      return { innerGaps: [], outerGaps: [] };
+    }
+
     if (sorted.length === 0) {
-      if (activeEnd - activeStart >= 15) outerGaps.push({ start: activeStart, end: activeEnd, duration: activeEnd - activeStart });
+      if (activeEnd - effectiveStart >= 15) outerGaps.push({ start: effectiveStart, end: activeEnd, duration: activeEnd - effectiveStart });
       return { innerGaps, outerGaps };
     }
 
+    // 現在時刻より後の最初の予定までの隙間（Outer）
     const firstEventStart = timeToMinutes(sorted[0].startTime);
-    if (firstEventStart > activeStart) {
+    if (firstEventStart > effectiveStart) {
       const gapEnd = Math.min(firstEventStart, activeEnd);
-      if (gapEnd - activeStart >= 15) outerGaps.push({ start: activeStart, end: gapEnd, duration: gapEnd - activeStart });
+      if (gapEnd - effectiveStart >= 15) outerGaps.push({ start: effectiveStart, end: gapEnd, duration: gapEnd - effectiveStart });
     }
 
-    let lastEnd = timeToMinutes(sorted[0].endTime);
+    // 予定と予定の間の隙間（Inner）
+    let lastEnd = Math.max(effectiveStart, timeToMinutes(sorted[0].endTime));
     for (let i = 1; i < sorted.length; i++) {
       const start = timeToMinutes(sorted[i].startTime);
       if (start > lastEnd) {
-        const gapStart = Math.max(lastEnd, activeStart);
+        const gapStart = Math.max(lastEnd, effectiveStart);
         const gapEnd = Math.min(start, activeEnd);
         if (gapEnd - gapStart >= 15) innerGaps.push({ start: gapStart, end: gapEnd, duration: gapEnd - gapStart });
       }
       lastEnd = Math.max(lastEnd, timeToMinutes(sorted[i].endTime));
     }
 
+    // 最後の予定から活動終了までの隙間（Outer）
     if (activeEnd > lastEnd) {
-      const gapStart = Math.max(lastEnd, activeStart);
+      const gapStart = Math.max(lastEnd, effectiveStart);
       if (activeEnd - gapStart >= 15) outerGaps.push({ start: gapStart, end: activeEnd, duration: activeEnd - gapStart });
     }
 
@@ -303,7 +318,7 @@ export default function App() {
     const gaps = innerGaps.length > 0 ? innerGaps : outerGaps;
     
     if (gaps.length === 0) {
-      alert("活動時間内に予想外が入り込む隙がありません！");
+      alert("現在の時刻から活動終了までの間に、予想外が入り込む隙間がありません！");
       return;
     }
 
@@ -362,7 +377,7 @@ export default function App() {
       }
     }
 
-    alert("活動時間の隙間に収まるタスクがストックにありませんでした。");
+    alert("現在の時刻から活動終了までの間に収まるタスクがストックにありませんでした。");
   };
 
   const sortedDisplaySchedule = [...schedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
