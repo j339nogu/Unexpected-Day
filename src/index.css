@@ -1,19 +1,5 @@
+/* index.css はこれだけでOKに戻しましょう！ */
 @import "tailwindcss";
-
-/* 🌟 最新版Tailwind v4仕様：スマホ本体の設定を無視し、手動切り替えを強制する */
-@variant dark (&:where(.dark, .dark *));
-
-/* ライトモード時の大元の設定 */
-html {
-  background-color: #F3EFE6;
-  color-scheme: light; /* スマホの時計や電池アイコンを「黒」にする */
-}
-
-/* ダークモード時の大元の設定 */
-html.dark {
-  background-color: #121212;
-  color-scheme: dark; /* スマホの時計や電池アイコンを「白」にする */
-}
 
 body {
   touch-action: manipulation;
