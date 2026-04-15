@@ -1,5 +1,5 @@
-/* index.css はこれだけでOKに戻しましょう！ */
 @import "tailwindcss";
+@custom-variant dark (&:is(.dark *));
 
 body {
   touch-action: manipulation;
