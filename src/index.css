@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @custom-variant dark (&:is(.dark *));
 
-body {
+/* ライトモード時の大元の背景色（スクロールではみ出た部分） */
+html, body {
+  background-color: #F3EFE6;
   touch-action: manipulation;
+}
+
+/* ダークモード時の大元の背景色 */
+html.dark, html.dark body {
+  background-color: #121212;
 }
