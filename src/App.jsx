@@ -161,19 +161,18 @@ export default function App() {
   const [schedule, setSchedule] = useState([]);
   const [customPool, setCustomPool] = useState([]);
   const [activeRange, setActiveRange] = useState({ start: "08:00", end: "23:00" });
-  
-  // ★ よく使う予定（タイトル＋時間セット）
   const [eventTemplates, setEventTemplates] = useState([]);
-
   const [currentTime, setCurrentTime] = useState('');
 
   // UI用ステート
   const [isFabMenuOpen, setIsFabMenuOpen] = useState(false);
   const [activeSheet, setActiveSheet] = useState(null); // 'event' | 'stock' | null
-  
-  // ★ ボトムシートのモード（half: 画面下半分, full: ほぼ全画面）
-  const [sheetMode, setSheetMode] = useState('half'); 
+  const [sheetMode, setSheetMode] = useState('half'); // 'half' | 'full'
 
+  // ★ ウィンドウの高さ管理（ヌルサクなドラッグ計算用）
+  const [windowHeight, setWindowHeight] = useState(800);
+
+  // ボトムシートのドラッグ管理
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const touchStartY = useRef(0);
@@ -190,6 +189,8 @@ export default function App() {
   const [poolDuration, setPoolDuration] = useState(30);
 
   useEffect(() => {
+    setWindowHeight(window.innerHeight); // 初回レンダリング時に画面高さを取得
+
     const fadeTimer = setTimeout(() => { setFadeSplash(true); }, 1500);
     const removeTimer = setTimeout(() => { setShowSplash(false); }, 2500);
 
@@ -219,7 +220,6 @@ export default function App() {
     if (savedPool) setCustomPool(JSON.parse(savedPool));
     if (savedRange) setActiveRange(JSON.parse(savedRange));
     
-    // テンプレートの読み込み（古い文字だけのデータならリセットして新形式に）
     if (savedTemplates) {
       const parsed = JSON.parse(savedTemplates);
       if (parsed.length > 0 && typeof parsed[0] === 'string') {
@@ -285,19 +285,23 @@ export default function App() {
   const currentMonth = today.getMonth() + 1;
   const currentDate = today.getDate();
 
-  // ★ シートのドラッグ操作（上に引っ張って全画面、下に下げて閉じる）
+  // ★ シートのヌルサクドラッグ操作
+  const halfOffset = windowHeight * 0.45; // ハーフ表示時の下方向へのズレ量（約半分）
+
   const handleTouchStart = (e) => {
     touchStartY.current = e.touches[0].clientY;
     setIsDragging(true);
   };
+
   const handleTouchMove = (e) => {
     const diff = e.touches[0].clientY - touchStartY.current;
     if (sheetMode === 'half') {
-      setDragY(diff); // 上にも下にも動かせる
+      setDragY(diff); // 上下どちらにも引っ張れる
     } else if (sheetMode === 'full') {
       if (diff > 0) setDragY(diff); // フル画面からは下方向にのみ引っ張れる
     }
   };
+
   const handleTouchEnd = () => {
     setIsDragging(false);
     if (sheetMode === 'half') {
@@ -311,23 +315,31 @@ export default function App() {
         setSheetMode('half'); // 下に引っ張ったらハーフに戻る
       }
     }
-    setDragY(0); // ドラッグ表示はリセット（CSSのheightに任せる）
+    setDragY(0); // ドラッグが終わったら指の追従オフセットは0に戻す
   };
   
   const closeSheet = () => {
-    setDragY(window.innerHeight);
+    setActiveSheet(null);
     setTimeout(() => {
-      setActiveSheet(null);
+      setSheetMode('half');
       setDragY(0);
     }, 300);
   };
 
-  // FABからメニューを開く処理（開くときは必ずhalfモード）
   const openSheet = (type) => {
     setIsFabMenuOpen(false);
     setActiveSheet(type);
     setSheetMode('half');
   };
+
+  // ボトムシートの現在のY座標を計算（CSSのtransformで使う）
+  let sheetTranslateY = windowHeight; // 初期状態は画面外
+  if (activeSheet) {
+    const baseTranslate = sheetMode === 'half' ? halfOffset : 0;
+    let finalTranslate = baseTranslate + dragY;
+    if (finalTranslate < 0) finalTranslate = finalTranslate * 0.3; // 画面上端を超えたらゴムのように抵抗を持たせる
+    sheetTranslateY = finalTranslate;
+  }
 
   const getGaps = (currentSchedule) => {
     const sorted = [...currentSchedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
@@ -406,7 +418,6 @@ export default function App() {
     e.target.style.height = `${e.target.scrollHeight}px`; 
   };
 
-  // ★ テンプレート保存判定（同じタイトル・時間が既に存在しないか）
   const canSaveTemplate = newTitle.trim() && newStartTime && newEndTime && 
     !eventTemplates.some(t => t.title === newTitle.trim() && t.startTime === newStartTime && t.endTime === newEndTime);
 
@@ -471,6 +482,7 @@ export default function App() {
     alert("現在の時刻から活動終了までの間に収まるタスクがストックにありませんでした。");
   };
 
+  // ★ タイムラインの表示ロジック（終了時刻ベースで判定）
   const renderScheduleWithTimeline = () => {
     const sorted = [...schedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
     const nowMins = timeToMinutes(currentTime);
@@ -478,8 +490,10 @@ export default function App() {
     let isNowInjected = false;
 
     sorted.forEach((item) => {
-      const itemStartMins = timeToMinutes(item.startTime);
-      if (!isNowInjected && nowMins < itemStartMins) {
+      const itemEndMins = timeToMinutes(item.endTime);
+      
+      // ★ 終了時刻が現在時刻より後のタスクの「直前」にバーを入れる
+      if (!isNowInjected && nowMins < itemEndMins) {
         elements.push(<CurrentTimeLine key="timeline-now" time={currentTime} />);
         isNowInjected = true;
       }
@@ -530,8 +544,6 @@ export default function App() {
   return (
     <>
       <style>{`
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
       `}</style>
@@ -596,113 +608,117 @@ export default function App() {
         </button>
       </div>
 
-      {activeSheet && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center font-serif">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={closeSheet}></div>
-          
-          {/* ボトムシート本体：sheetModeに応じて高さが変化 */}
+      {/* ★ 完全にCSS transformのみで制御する滑らかなボトムシート */}
+      <div 
+        className={`fixed inset-0 z-50 flex flex-col justify-end font-serif ${activeSheet ? 'pointer-events-auto' : 'pointer-events-none'}`}
+      >
+        <div 
+          className={`absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${activeSheet ? 'opacity-100' : 'opacity-0'}`} 
+          onClick={closeSheet}
+        ></div>
+        
+        <div 
+          className={`relative w-full max-w-md mx-auto bg-[#F3EFE6] dark:bg-[#1E1E1E] rounded-t-3xl shadow-2xl flex flex-col h-[90vh] ${isDragging ? '' : 'transition-transform duration-300 ease-out'}`}
+          style={{ transform: `translateY(${sheetTranslateY}px)` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* ドラッグ用ハンドル部分 */}
           <div 
-            className={`relative w-full max-w-md bg-[#F3EFE6] dark:bg-[#1E1E1E] rounded-t-3xl shadow-2xl p-6 pb-12 flex flex-col ${isDragging ? '' : 'transition-all duration-300 ease-out'} ${sheetMode === 'full' ? 'h-[90vh]' : 'h-auto max-h-[60vh]'}`}
-            style={{ transform: `translateY(${dragY}px)` }}
-            onClick={(e) => e.stopPropagation()}
+            className="w-full pt-4 pb-4 flex justify-center cursor-grab active:cursor-grabbing shrink-0"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
-            <div 
-              className="w-full pt-2 pb-6 -mt-2 flex justify-center cursor-grab active:cursor-grabbing shrink-0"
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-            >
-              <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
-            </div>
-            
-            {/* コンテンツエリア（フル画面時はここがスクロールする） */}
-            <div className="flex-1 overflow-y-auto pr-2">
-              {activeSheet === 'event' && (
-                <div>
-                  <h3 className="text-lg font-bold text-[#C63527] dark:text-[#FF8A80] mb-4">確定している予定を追加</h3>
-                  <form onSubmit={addNormalEvent}>
-                    <textarea
-                      placeholder="予定のタイトル"
-                      className="w-full mb-4 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] placeholder-[#C63527]/50 dark:placeholder-[#FF8A80]/50 focus:outline-none text-base resize-none overflow-hidden"
-                      rows={1}
-                      value={newTitle}
-                      onChange={(e) => { setNewTitle(e.target.value); handleTextareaResize(e); }}
-                    />
-                    
-                    {/* ★ テンプレート（よく使う予定）エリア */}
-                    <div className="mb-6 bg-black/5 dark:bg-white/5 p-3 rounded-xl">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
-                        <span className="text-xs font-bold text-[#C63527]/80 dark:text-[#FF8A80]/80">よく使う予定（タップで自動入力）</span>
-                        {canSaveTemplate && (
-                           <button 
-                             type="button"
-                             onClick={saveTemplate}
-                             className="text-[10px] bg-[#C63527] dark:bg-[#FF8A80] text-white dark:text-gray-900 px-2 py-1.5 rounded-md font-bold shadow-sm active:scale-95 transition-transform"
-                           >
-                             ＋ 現在の内容をテンプレ登録
-                           </button>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {eventTemplates.map((temp) => (
-                          <div key={temp.id} className="text-xs border border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] pl-3 pr-1 py-1.5 rounded-full flex items-center gap-1 bg-white/50 dark:bg-black/20">
-                            <span className="cursor-pointer font-bold" onClick={() => applyTemplate(temp)}>
-                              {temp.title} <span className="opacity-70 font-normal">({temp.startTime}-{temp.endTime})</span>
-                            </span>
-                            <button 
-                              type="button" 
-                              onClick={() => setEventTemplates(eventTemplates.filter(t => t.id !== temp.id))} 
-                              className="font-bold opacity-40 hover:opacity-100 p-1 ml-1"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+            <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
+          </div>
+          
+          {/* スクロール可能なコンテンツエリア */}
+          <div className="flex-1 overflow-y-auto px-6 pb-12">
+            {activeSheet === 'event' && (
+              <div>
+                <h3 className="text-lg font-bold text-[#C63527] dark:text-[#FF8A80] mb-4">確定している予定を追加</h3>
+                <form onSubmit={addNormalEvent}>
+                  <textarea
+                    placeholder="予定のタイトル"
+                    className="w-full mb-4 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] placeholder-[#C63527]/50 dark:placeholder-[#FF8A80]/50 focus:outline-none text-base resize-none overflow-hidden"
+                    rows={1}
+                    value={newTitle}
+                    onChange={(e) => { setNewTitle(e.target.value); handleTextareaResize(e); }}
+                  />
+                  
+                  {/* よく使う予定（テンプレート）エリア */}
+                  <div className="mb-6 bg-black/5 dark:bg-white/5 p-3 rounded-xl">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+                      <span className="text-xs font-bold text-[#C63527]/80 dark:text-[#FF8A80]/80">よく使う予定（タップで自動入力）</span>
+                      {canSaveTemplate && (
+                         <button 
+                           type="button"
+                           onClick={saveTemplate}
+                           className="text-[10px] bg-[#C63527] dark:bg-[#FF8A80] text-white dark:text-gray-900 px-2 py-1.5 rounded-md font-bold shadow-sm active:scale-95 transition-transform"
+                         >
+                           ＋ 現在の内容をテンプレ登録
+                         </button>
+                      )}
                     </div>
-
-                    <div className="flex gap-2 mb-8">
-                      <input type="time" className="w-1/2 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] focus:outline-none" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
-                      <span className="text-[#C63527] dark:text-[#FF8A80] self-center">〜</span>
-                      <input type="time" className="w-1/2 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] focus:outline-none" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
-                    </div>
-                    <button type="submit" className="w-full py-3 bg-[#C63527] dark:bg-[#FF8A80] text-white dark:text-gray-900 font-bold rounded-xl shadow-md hover:opacity-90 transition-opacity">
-                      追加する
-                    </button>
-                  </form>
-                </div>
-              )}
-
-              {activeSheet === 'stock' && (
-                <div>
-                  <h3 className="text-lg font-bold text-[#2D4E35] dark:text-[#A5D6A7] mb-4">いつかやりたいこと（ストック）</h3>
-                  <form onSubmit={(e) => { e.preventDefault(); if(poolTitle){ setCustomPool([...customPool, { id: Date.now(), title: poolTitle, duration: parseInt(poolDuration) }]); setPoolTitle(''); } }}>
-                    <input className="w-full mb-6 p-2 bg-transparent border-b-2 border-[#2D4E35] dark:border-[#A5D6A7] text-[#2D4E35] dark:text-[#A5D6A7] placeholder-[#2D4E35]/50 dark:placeholder-[#A5D6A7]/50 focus:outline-none text-base" placeholder="タスク名" value={poolTitle} onChange={e => setPoolTitle(e.target.value)} />
-                    <div className="flex gap-4 mb-8">
-                      <select className="flex-1 bg-transparent border-b-2 border-[#2D4E35] dark:border-[#A5D6A7] text-[#2D4E35] dark:text-[#A5D6A7] focus:outline-none p-2" value={poolDuration} onChange={e => setPoolDuration(e.target.value)}>
-                        <option value="15">15分</option><option value="30">30分</option><option value="60">60分</option><option value="90">90分</option>
-                      </select>
-                      <button type="submit" className="flex-1 py-3 bg-[#2D4E35] dark:bg-[#A5D6A7] text-white dark:text-gray-900 font-bold rounded-xl shadow-md hover:opacity-90 transition-opacity">
-                        ストックする
-                      </button>
-                    </div>
-                  </form>
-                  {customPool.length > 0 && (
                     <div className="flex flex-wrap gap-2">
-                      {customPool.map(t => (
-                        <div key={t.id} className="text-xs border border-[#2D4E35] dark:border-[#A5D6A7] text-[#2D4E35] dark:text-[#A5D6A7] px-3 py-1.5 rounded-full flex items-center gap-2 bg-white/50 dark:bg-black/20">
-                          <span>{t.title}({t.duration}分)</span>
-                          <button type="button" onClick={() => setCustomPool(customPool.filter(x => x.id !== t.id))} className="font-bold opacity-60 hover:opacity-100">×</button>
+                      {eventTemplates.map((temp) => (
+                        <div key={temp.id} className="text-xs border border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] pl-3 pr-1 py-1.5 rounded-full flex items-center gap-1 bg-white/50 dark:bg-black/20">
+                          <span className="cursor-pointer font-bold" onClick={() => applyTemplate(temp)}>
+                            {temp.title} <span className="opacity-70 font-normal">({temp.startTime}-{temp.endTime})</span>
+                          </span>
+                          <button 
+                            type="button" 
+                            onClick={() => setEventTemplates(eventTemplates.filter(t => t.id !== temp.id))} 
+                            className="font-bold opacity-40 hover:opacity-100 p-1 ml-1"
+                          >
+                            ×
+                          </button>
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  </div>
+
+                  <div className="flex gap-2 mb-8">
+                    <input type="time" className="w-1/2 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] focus:outline-none" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                    <span className="text-[#C63527] dark:text-[#FF8A80] self-center">〜</span>
+                    <input type="time" className="w-1/2 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] focus:outline-none" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-[#C63527] dark:bg-[#FF8A80] text-white dark:text-gray-900 font-bold rounded-xl shadow-md hover:opacity-90 transition-opacity">
+                    追加する
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {activeSheet === 'stock' && (
+              <div>
+                <h3 className="text-lg font-bold text-[#2D4E35] dark:text-[#A5D6A7] mb-4">いつかやりたいこと（ストック）</h3>
+                <form onSubmit={(e) => { e.preventDefault(); if(poolTitle){ setCustomPool([...customPool, { id: Date.now(), title: poolTitle, duration: parseInt(poolDuration) }]); setPoolTitle(''); } }}>
+                  <input className="w-full mb-6 p-2 bg-transparent border-b-2 border-[#2D4E35] dark:border-[#A5D6A7] text-[#2D4E35] dark:text-[#A5D6A7] placeholder-[#2D4E35]/50 dark:placeholder-[#A5D6A7]/50 focus:outline-none text-base" placeholder="タスク名" value={poolTitle} onChange={e => setPoolTitle(e.target.value)} />
+                  <div className="flex gap-4 mb-8">
+                    <select className="flex-1 bg-transparent border-b-2 border-[#2D4E35] dark:border-[#A5D6A7] text-[#2D4E35] dark:text-[#A5D6A7] focus:outline-none p-2" value={poolDuration} onChange={e => setPoolDuration(e.target.value)}>
+                      <option value="15">15分</option><option value="30">30分</option><option value="60">60分</option><option value="90">90分</option>
+                    </select>
+                    <button type="submit" className="flex-1 py-3 bg-[#2D4E35] dark:bg-[#A5D6A7] text-white dark:text-gray-900 font-bold rounded-xl shadow-md hover:opacity-90 transition-opacity">
+                      ストックする
+                    </button>
+                  </div>
+                </form>
+                {customPool.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {customPool.map(t => (
+                      <div key={t.id} className="text-xs border border-[#2D4E35] dark:border-[#A5D6A7] text-[#2D4E35] dark:text-[#A5D6A7] px-3 py-1.5 rounded-full flex items-center gap-2 bg-white/50 dark:bg-black/20">
+                        <span>{t.title}({t.duration}分)</span>
+                        <button type="button" onClick={() => setCustomPool(customPool.filter(x => x.id !== t.id))} className="font-bold opacity-60 hover:opacity-100">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </>
   );
 }
