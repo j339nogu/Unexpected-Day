@@ -1,5 +1,19 @@
 @import "tailwindcss";
-@custom-variant dark (&:is(.dark *));
+
+/* クラスによるダークモード切り替えを有効化 */
+@variant dark (&:is(.dark *));
+
+/* ライトモードの大元の背景と、時計アイコンの色（light） */
+html {
+  background-color: #F3EFE6;
+  color-scheme: light;
+}
+
+/* ダークモードの大元の背景と、時計アイコンの色（dark） */
+html.dark {
+  background-color: #121212;
+  color-scheme: dark;
+}
 
 body {
   touch-action: manipulation;
