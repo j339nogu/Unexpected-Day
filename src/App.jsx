@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 
 // --- 時間帯の定義リスト ---
 const ALL = ['morning', 'day', 'afternoon', 'evening', 'night', 'midnight'];
@@ -98,46 +99,88 @@ const getSlotCategory = (minutes) => {
   return 'midnight';
 };
 
-// --- コンポーネント ---
-const EventCard = ({ id, startTime, endTime, title, type, onDelete, onClick }) => {
+// --- スワイプ対応コンポーネント ---
+const SwipeableEventCard = ({ id, startTime, endTime, title, type, onDelete, onEdit }) => {
   const isUnexpected = type === 'unexpected';
   const isCustom = type === 'custom';
 
-  let bgColor = 'bg-transparent';
+  // スワイプ時に後ろのボタンが透けないよう、アプリ背景色(#F3EFE6)と同化する色をデフォルトに
+  let bgColor = 'bg-[#F3EFE6]';
   let borderColor = 'border-[#C63527]';
   let textColor = 'text-[#C63527]';
-  let btnColor = 'text-[#C63527] opacity-30 hover:opacity-100';
 
   if (isUnexpected) {
     bgColor = 'bg-[#C63527]';
     textColor = 'text-white';
-    btnColor = 'text-white opacity-40 hover:opacity-100';
   } else if (isCustom) {
     bgColor = 'bg-[#2D4E35]';
     borderColor = 'border-[#2D4E35]';
     textColor = 'text-white';
-    btnColor = 'text-white opacity-40 hover:opacity-100';
   }
 
-  return (
-    <div
-      onClick={onClick}
-      className={`relative w-full px-4 py-3 rounded-md border-2 mb-2 cursor-pointer transition-transform hover:scale-[1.01] ${bgColor} ${borderColor} ${textColor}`}
-    >
-      <button 
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(id);
-        }}
-        className={`absolute top-2 right-2 text-xs transition-opacity ${btnColor} p-2 -m-2`}
-        aria-label="削除"
-      >
-        ✕
-      </button>
+  // スワイプ用の状態管理
+  const [translateX, setTranslateX] = useState(0);
+  const touchStartX = useRef(0);
+  const touchCurrentX = useRef(0);
+  const ACTION_WIDTH = 140; // 編集(70px) + 削除(70px) の幅
 
-      <div className="font-bold text-base sm:text-lg leading-tight mb-1 pr-6 break-words whitespace-pre-wrap">{title}</div>
-      <div className={`text-xs sm:text-sm ${isUnexpected || isCustom ? 'opacity-90' : 'text-[#C63527]/80'}`}>
-        {startTime}-{endTime}
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchCurrentX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e) => {
+    touchCurrentX.current = e.touches[0].clientX;
+    const diff = touchCurrentX.current - touchStartX.current;
+    
+    if (diff < 0 && translateX === 0) {
+      // 左へのスワイプ
+      setTranslateX(Math.max(diff, -ACTION_WIDTH));
+    } else if (diff > 0 && translateX < 0) {
+      // 右へのスワイプ（元に戻す）
+      setTranslateX(Math.min(-ACTION_WIDTH + diff, 0));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    // スワイプ距離が半分を超えたら開きっぱなしにする
+    if (translateX < -(ACTION_WIDTH / 2)) {
+      setTranslateX(-ACTION_WIDTH);
+    } else {
+      setTranslateX(0);
+    }
+  };
+
+  return (
+    <div className="relative w-full mb-2 overflow-hidden rounded-md border-2 border-transparent">
+      {/* 背後に隠れているアクションボタン */}
+      <div className="absolute top-0 right-0 h-full flex">
+        <button 
+          onClick={(e) => { e.stopPropagation(); setTranslateX(0); onEdit(); }} 
+          className="w-[70px] bg-gray-400 text-white font-bold text-sm flex items-center justify-center transition-colors hover:bg-gray-500 rounded-l-md"
+        >
+          編集
+        </button>
+        <button 
+          onClick={(e) => { e.stopPropagation(); setTranslateX(0); onDelete(id); }} 
+          className="w-[70px] bg-[#C63527] text-white font-bold text-sm flex items-center justify-center transition-colors hover:bg-red-800 rounded-r-md"
+        >
+          削除
+        </button>
+      </div>
+
+      {/* スワイプで動く前面のカード本体 */}
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ transform: `translateX(${translateX}px)` }}
+        className={`relative w-full px-4 py-3 border-2 transition-transform duration-200 ease-out rounded-md shadow-sm ${bgColor} ${borderColor} ${textColor}`}
+      >
+        <div className="font-bold text-base sm:text-lg leading-tight mb-1 pr-6 break-words whitespace-pre-wrap">{title}</div>
+        <div className={`text-xs sm:text-sm ${isUnexpected || isCustom ? 'opacity-90' : 'text-[#C63527]/80'}`}>
+          {startTime}-{endTime}
+        </div>
       </div>
     </div>
   );
@@ -168,6 +211,9 @@ export default function App() {
   const [newEndTime, setNewEndTime] = useState('');
   const [poolTitle, setPoolTitle] = useState('');
   const [poolDuration, setPoolDuration] = useState(30);
+
+  // ★ ヌルッとしたアニメーションを管理するHook
+  const [listRef] = useAutoAnimate();
 
   useEffect(() => {
     const fadeTimer = setTimeout(() => { setFadeSplash(true); }, 1500);
@@ -214,7 +260,7 @@ export default function App() {
   const currentMonth = today.getMonth() + 1;
   const currentDate = today.getDate();
 
-  // 隙間計算（現在時刻を考慮し、予定と予定の間を最優先）
+  // 隙間計算
   const getGaps = (currentSchedule) => {
     const sorted = [...currentSchedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
     const innerGaps = [];
@@ -222,31 +268,23 @@ export default function App() {
     const activeStart = timeToMinutes(activeRange.start);
     const activeEnd = timeToMinutes(activeRange.end);
 
-    // ★ 現在のリアルタイム時刻を取得
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-    // ★ 設定上の開始時刻か、現在時刻のどちらか「遅い方」を実質的なスタートラインとする
     const effectiveStart = Math.max(activeStart, currentMinutes);
 
-    // すでに活動終了時刻を過ぎている場合は隙間なし
-    if (effectiveStart >= activeEnd) {
-      return { innerGaps: [], outerGaps: [] };
-    }
+    if (effectiveStart >= activeEnd) return { innerGaps: [], outerGaps: [] };
 
     if (sorted.length === 0) {
       if (activeEnd - effectiveStart >= 15) outerGaps.push({ start: effectiveStart, end: activeEnd, duration: activeEnd - effectiveStart });
       return { innerGaps, outerGaps };
     }
 
-    // 現在時刻より後の最初の予定までの隙間（Outer）
     const firstEventStart = timeToMinutes(sorted[0].startTime);
     if (firstEventStart > effectiveStart) {
       const gapEnd = Math.min(firstEventStart, activeEnd);
       if (gapEnd - effectiveStart >= 15) outerGaps.push({ start: effectiveStart, end: gapEnd, duration: gapEnd - effectiveStart });
     }
 
-    // 予定と予定の間の隙間（Inner）
     let lastEnd = Math.max(effectiveStart, timeToMinutes(sorted[0].endTime));
     for (let i = 1; i < sorted.length; i++) {
       const start = timeToMinutes(sorted[i].startTime);
@@ -258,7 +296,6 @@ export default function App() {
       lastEnd = Math.max(lastEnd, timeToMinutes(sorted[i].endTime));
     }
 
-    // 最後の予定から活動終了までの隙間（Outer）
     if (activeEnd > lastEnd) {
       const gapStart = Math.max(lastEnd, effectiveStart);
       if (activeEnd - gapStart >= 15) outerGaps.push({ start: gapStart, end: activeEnd, duration: activeEnd - gapStart });
@@ -275,18 +312,10 @@ export default function App() {
       alert("終了時刻は開始時刻より後に設定してください。");
       return;
     }
-
-    const newEvent = {
-      id: Date.now(),
-      startTime: newStartTime,
-      endTime: newEndTime,
-      title: newTitle,
-      type: 'normal'
-    };
-
+    const newEvent = { id: Date.now(), startTime: newStartTime, endTime: newEndTime, title: newTitle, type: 'normal' };
     setSchedule([...schedule, newEvent]);
     setNewTitle(''); setNewStartTime(''); setNewEndTime('');
-    setIsScheduleFormOpen(false); // 追加したらフォームを閉じる
+    setIsScheduleFormOpen(false);
   };
 
   const deleteEvent = (idToDelete) => setSchedule(schedule.filter(item => item.id !== idToDelete));
@@ -313,7 +342,16 @@ export default function App() {
     e.target.style.height = `${e.target.scrollHeight}px`; 
   };
 
+  // ★ バイブレーション機能の追加
+  const triggerVibration = () => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(50); // 50ミリ秒の「ブルッ」
+    }
+  };
+
   const triggerUnexpected = () => {
+    triggerVibration(); // ボタン押下時の振動
+
     const { innerGaps, outerGaps } = getGaps(schedule);
     const gaps = innerGaps.length > 0 ? innerGaps : outerGaps;
     
@@ -351,6 +389,8 @@ export default function App() {
   };
 
   const triggerCustomTask = () => {
+    triggerVibration(); // ボタン押下時の振動
+
     if (customPool.length === 0) {
       alert("まずは「ストック」にタスクを追加してください。");
       return;
@@ -359,7 +399,6 @@ export default function App() {
     const { innerGaps, outerGaps } = getGaps(schedule);
     const shuffledTasks = [...customPool].sort(() => 0.5 - Math.random());
 
-    // 1. まず予定の間（inner）を探す
     for (const task of shuffledTasks) {
       const targetGap = innerGaps.find(g => g.duration >= task.duration);
       if (targetGap) {
@@ -368,7 +407,6 @@ export default function App() {
       }
     }
 
-    // 2. なければ前後（outer）を探す
     for (const task of shuffledTasks) {
       const targetGap = outerGaps.find(g => g.duration >= task.duration);
       if (targetGap) {
@@ -400,7 +438,6 @@ export default function App() {
             <h1 className="text-4xl sm:text-5xl font-bold mt-1">{currentDate}</h1>
           </div>
 
-          {/* 活動時間の指定 */}
           <div className="mb-6 p-3 border border-[#C63527]/30 rounded flex items-center justify-between text-[#C63527] bg-[#F3EFE6]">
             <span className="text-xs font-bold">活動時間</span>
             <div className="flex gap-2 items-center">
@@ -410,7 +447,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* 予定追加フォーム（アコーディオン） */}
           <div className="mb-4 border-2 border-dashed border-[#C63527]/40 rounded-md transition-all overflow-hidden">
             <button 
               type="button" 
@@ -441,7 +477,6 @@ export default function App() {
             )}
           </div>
 
-          {/* タスクストック（アコーディオン） */}
           <div className="mb-8 border-2 border-[#2D4E35]/40 rounded-md text-[#2D4E35] transition-all overflow-hidden">
             <button 
               type="button" 
@@ -476,12 +511,12 @@ export default function App() {
             )}
           </div>
 
-          {/* スケジュール表示 */}
-          <div className="flex flex-col">
+          {/* ★ AutoAnimateを適用したスケジュールリスト */}
+          <div className="flex flex-col" ref={listRef}>
             {sortedDisplaySchedule.map((item) => {
               const isUnexpected = item.type === 'unexpected';
               const isCustom = item.type === 'custom';
-              const editBg = isUnexpected ? 'bg-[#C63527] border-[#C63527] text-white' : isCustom ? 'bg-[#2D4E35] border-[#2D4E35] text-white' : 'bg-transparent border-[#C63527] text-[#C63527]';
+              const editBg = isUnexpected ? 'bg-[#C63527] border-[#C63527] text-white' : isCustom ? 'bg-[#2D4E35] border-[#2D4E35] text-white' : 'bg-[#F3EFE6] border-[#C63527] text-[#C63527]';
               const saveBtnClass = isUnexpected || isCustom ? 'border-white hover:bg-white hover:text-[#C63527]' : 'border-[#C63527] hover:bg-[#C63527] hover:text-white';
 
               return editingId === item.id ? (
@@ -505,7 +540,7 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <EventCard
+                <SwipeableEventCard
                   key={item.id}
                   id={item.id}
                   startTime={item.startTime}
@@ -513,7 +548,7 @@ export default function App() {
                   title={item.title}
                   type={item.type}
                   onDelete={deleteEvent}
-                  onClick={() => startEditing(item)}
+                  onEdit={() => startEditing(item)}
                 />
               )
             })}
@@ -525,17 +560,16 @@ export default function App() {
             </p>
           </div>
 
-          {/* 固定操作ボタン */}
           <div className="fixed bottom-6 left-0 right-0 flex flex-col items-center gap-3 px-4 pointer-events-none">
             <button
               onClick={triggerCustomTask}
-              className="pointer-events-auto w-full max-w-sm bg-[#2D4E35] text-white px-4 sm:px-6 py-3 sm:py-4 rounded-full font-bold shadow-lg border-2 border-[#2D4E35] hover:bg-white hover:text-[#2D4E35] transition-all transform hover:scale-105 text-sm sm:text-base"
+              className="pointer-events-auto w-full max-w-sm bg-[#2D4E35] text-white px-4 sm:px-6 py-3 sm:py-4 rounded-full font-bold shadow-lg border-2 border-[#2D4E35] hover:bg-white hover:text-[#2D4E35] transition-all transform hover:scale-105 active:scale-95 text-sm sm:text-base"
             >
               時間を有効活用する
             </button>
             <button
               onClick={triggerUnexpected}
-              className="pointer-events-auto w-full max-w-sm bg-[#C63527] text-white px-4 sm:px-6 py-3 sm:py-4 rounded-full font-bold shadow-lg border-2 border-[#C63527] hover:bg-white hover:text-[#C63527] transition-all transform hover:scale-105 text-sm sm:text-base"
+              className="pointer-events-auto w-full max-w-sm bg-[#C63527] text-white px-4 sm:px-6 py-3 sm:py-4 rounded-full font-bold shadow-lg border-2 border-[#C63527] hover:bg-white hover:text-[#C63527] transition-all transform hover:scale-105 active:scale-95 text-sm sm:text-base"
             >
               日常に予想外を起こす
             </button>
