@@ -98,6 +98,14 @@ const getSlotCategory = (minutes) => {
   return 'midnight';
 };
 
+// --- ★ HTMLのテーマカラーメタタグを書き換える関数 ---
+const updateThemeColorMeta = (isDark) => {
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (metaThemeColor) {
+    metaThemeColor.setAttribute('content', isDark ? '#121212' : '#F3EFE6');
+  }
+};
+
 // --- コンポーネント：タイムライン ---
 const CurrentTimeLine = ({ time }) => (
   <div className="flex items-center w-full my-3 text-red-500 dark:text-red-400 animate-pulse relative z-0">
@@ -169,7 +177,6 @@ export default function App() {
   const [activeSheet, setActiveSheet] = useState(null); // 'event' | 'stock' | null
   const [sheetMode, setSheetMode] = useState('half'); // 'half' | 'full'
 
-  // ★ ウィンドウの高さ管理（ヌルサクなドラッグ計算用）
   const [windowHeight, setWindowHeight] = useState(800);
 
   // ボトムシートのドラッグ管理
@@ -189,18 +196,23 @@ export default function App() {
   const [poolDuration, setPoolDuration] = useState(30);
 
   useEffect(() => {
-    setWindowHeight(window.innerHeight); // 初回レンダリング時に画面高さを取得
+    setWindowHeight(window.innerHeight);
 
     const fadeTimer = setTimeout(() => { setFadeSplash(true); }, 1500);
     const removeTimer = setTimeout(() => { setShowSplash(false); }, 2500);
 
     const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    // ★ 初回読み込み時にテーマを反映し、HTMLのメタタグも更新する
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
+      updateThemeColorMeta(true);
     } else {
       setIsDarkMode(false);
       document.documentElement.classList.remove('dark');
+      updateThemeColorMeta(false);
     }
 
     const updateTime = () => {
@@ -269,15 +281,18 @@ export default function App() {
     return () => { document.body.style.overflow = ''; };
   }, [activeSheet, isFabMenuOpen]);
 
+  // ★ テーマ切り替え時にHTMLメタタグを更新する
   const toggleTheme = () => {
     if (isDarkMode) {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
       setIsDarkMode(false);
+      updateThemeColorMeta(false);
     } else {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
       setIsDarkMode(true);
+      updateThemeColorMeta(true);
     }
   };
 
@@ -285,8 +300,8 @@ export default function App() {
   const currentMonth = today.getMonth() + 1;
   const currentDate = today.getDate();
 
-  // ★ シートのヌルサクドラッグ操作
-  const halfOffset = windowHeight * 0.45; // ハーフ表示時の下方向へのズレ量（約半分）
+  // ボトムシートのドラッグ操作
+  const halfOffset = windowHeight * 0.45;
 
   const handleTouchStart = (e) => {
     touchStartY.current = e.touches[0].clientY;
@@ -296,9 +311,9 @@ export default function App() {
   const handleTouchMove = (e) => {
     const diff = e.touches[0].clientY - touchStartY.current;
     if (sheetMode === 'half') {
-      setDragY(diff); // 上下どちらにも引っ張れる
+      setDragY(diff);
     } else if (sheetMode === 'full') {
-      if (diff > 0) setDragY(diff); // フル画面からは下方向にのみ引っ張れる
+      if (diff > 0) setDragY(diff);
     }
   };
 
@@ -306,16 +321,16 @@ export default function App() {
     setIsDragging(false);
     if (sheetMode === 'half') {
       if (dragY < -50) {
-        setSheetMode('full'); // 上に引っ張ったらフル画面に
+        setSheetMode('full'); 
       } else if (dragY > 100) {
-        closeSheet(); // 下に引っ張ったら閉じる
+        closeSheet(); 
       }
     } else if (sheetMode === 'full') {
       if (dragY > 100) {
-        setSheetMode('half'); // 下に引っ張ったらハーフに戻る
+        setSheetMode('half');
       }
     }
-    setDragY(0); // ドラッグが終わったら指の追従オフセットは0に戻す
+    setDragY(0); 
   };
   
   const closeSheet = () => {
@@ -332,12 +347,11 @@ export default function App() {
     setSheetMode('half');
   };
 
-  // ボトムシートの現在のY座標を計算（CSSのtransformで使う）
-  let sheetTranslateY = windowHeight; // 初期状態は画面外
+  let sheetTranslateY = windowHeight; 
   if (activeSheet) {
     const baseTranslate = sheetMode === 'half' ? halfOffset : 0;
     let finalTranslate = baseTranslate + dragY;
-    if (finalTranslate < 0) finalTranslate = finalTranslate * 0.3; // 画面上端を超えたらゴムのように抵抗を持たせる
+    if (finalTranslate < 0) finalTranslate = finalTranslate * 0.3; 
     sheetTranslateY = finalTranslate;
   }
 
@@ -482,7 +496,6 @@ export default function App() {
     alert("現在の時刻から活動終了までの間に収まるタスクがストックにありませんでした。");
   };
 
-  // ★ タイムラインの表示ロジック（終了時刻ベースで判定）
   const renderScheduleWithTimeline = () => {
     const sorted = [...schedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
     const nowMins = timeToMinutes(currentTime);
@@ -492,7 +505,6 @@ export default function App() {
     sorted.forEach((item) => {
       const itemEndMins = timeToMinutes(item.endTime);
       
-      // ★ 終了時刻が現在時刻より後のタスクの「直前」にバーを入れる
       if (!isNowInjected && nowMins < itemEndMins) {
         elements.push(<CurrentTimeLine key="timeline-now" time={currentTime} />);
         isNowInjected = true;
@@ -556,6 +568,7 @@ export default function App() {
         </div>
       )}
 
+      {/* テーマ切り替えボタン */}
       <button 
         onClick={toggleTheme}
         className="fixed top-4 right-4 z-40 w-10 h-10 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-xl shadow-sm backdrop-blur-sm transition-colors"
@@ -593,6 +606,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* FAB */}
       <div className="fixed bottom-6 right-6 flex flex-col items-end z-40 font-serif">
         <div className={`flex flex-col items-end gap-3 mb-4 transition-all duration-300 origin-bottom-right ${isFabMenuOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'}`}>
           <button onClick={triggerCustomTask} className="bg-[#2D4E35] dark:bg-[#A5D6A7] text-white dark:text-gray-900 px-5 py-3 rounded-full shadow-lg font-bold text-sm">時間を有効活用する</button>
@@ -608,7 +622,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* ★ 完全にCSS transformのみで制御する滑らかなボトムシート */}
+      {/* 完全にCSS transformのみで制御する滑らかなボトムシート */}
       <div 
         className={`fixed inset-0 z-50 flex flex-col justify-end font-serif ${activeSheet ? 'pointer-events-auto' : 'pointer-events-none'}`}
       >
@@ -633,7 +647,7 @@ export default function App() {
           </div>
           
           {/* スクロール可能なコンテンツエリア */}
-          <div className="flex-1 overflow-y-auto px-6 pb-12">
+          <div className="flex-1 overflow-y-auto px-6 pb-12 overscroll-contain">
             {activeSheet === 'event' && (
               <div>
                 <h3 className="text-lg font-bold text-[#C63527] dark:text-[#FF8A80] mb-4">確定している予定を追加</h3>
