@@ -100,10 +100,16 @@ const getSlotCategory = (minutes) => {
 
 // --- ★ HTMLのテーマカラーメタタグを書き換える関数 ---
 const updateThemeColorMeta = (isDark) => {
-  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-  if (metaThemeColor) {
-    metaThemeColor.setAttribute('content', isDark ? '#121212' : '#F3EFE6');
+  let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (!metaThemeColor) {
+    metaThemeColor = document.createElement('meta');
+    metaThemeColor.name = "theme-color";
+    document.head.appendChild(metaThemeColor);
   }
+  // 背景色を切り替え
+  metaThemeColor.setAttribute('content', isDark ? '#121212' : '#F3EFE6');
+  // スマホのステータスバー（時計など）の色を強制的に反転させる
+  document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
 };
 
 // --- コンポーネント：タイムライン ---
