@@ -136,15 +136,10 @@ const EventCard = ({ id, startTime, endTime, title, type, onDelete, onClick }) =
       className={`relative w-full px-4 py-3 rounded-xl border-2 mb-2 cursor-pointer transition-transform hover:scale-[1.01] shadow-sm ${bgColor} ${borderColor} ${textColor} relative z-10`}
     >
       <button 
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(id);
-        }}
+        onClick={(e) => { e.stopPropagation(); onDelete(id); }}
         className={`absolute top-2 right-2 text-xs transition-opacity ${btnColor} p-2 -m-2`}
         aria-label="削除"
-      >
-        ✕
-      </button>
+      >✕</button>
       <div className="font-bold text-base sm:text-lg leading-tight mb-1 pr-6 break-words whitespace-pre-wrap">{title}</div>
       <div className={`text-xs sm:text-sm ${isUnexpected || isCustom ? 'opacity-90' : 'opacity-80'}`}>
         {startTime}-{endTime}
@@ -166,8 +161,8 @@ export default function App() {
 
   // UI用ステート
   const [isFabMenuOpen, setIsFabMenuOpen] = useState(false);
-  const [activeSheet, setActiveSheet] = useState(null); // 'event' | 'stock' | null
-  const [sheetMode, setSheetMode] = useState('half'); // 'half' | 'full'
+  const [activeSheet, setActiveSheet] = useState(null); 
+  const [sheetMode, setSheetMode] = useState('half'); 
 
   const [windowHeight, setWindowHeight] = useState(800);
 
@@ -187,23 +182,7 @@ export default function App() {
   const [poolTitle, setPoolTitle] = useState('');
   const [poolDuration, setPoolDuration] = useState(30);
 
-  // ★ 強制的に大元の背景色とメタタグを書き換える処理
-  useEffect(() => {
-    // スクロール外の余白（body）の色を直接指定
-    document.body.style.backgroundColor = isDarkMode ? '#121212' : '#F3EFE6';
-    document.body.style.color = isDarkMode ? 'white' : 'black';
-    document.documentElement.style.colorScheme = isDarkMode ? 'dark' : 'light';
-
-    // スマホ上部の時計などの色（メタタグ）を変更
-    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    if (!metaThemeColor) {
-      metaThemeColor = document.createElement('meta');
-      metaThemeColor.name = "theme-color";
-      document.head.appendChild(metaThemeColor);
-    }
-    metaThemeColor.setAttribute('content', isDarkMode ? '#121212' : '#F3EFE6');
-  }, [isDarkMode]);
-
+  // 初期読み込み＆ダークモード初期化
   useEffect(() => {
     setWindowHeight(window.innerHeight);
 
@@ -211,7 +190,9 @@ export default function App() {
     const removeTimer = setTimeout(() => { setShowSplash(false); }, 2500);
 
     const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
     } else {
@@ -285,23 +266,25 @@ export default function App() {
     return () => { document.body.style.overflow = ''; };
   }, [activeSheet, isFabMenuOpen]);
 
+  // ★ 余計なJSのstyle操作を排除した綺麗なトグル
   const toggleTheme = () => {
-    if (isDarkMode) {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-      setIsDarkMode(false);
-    } else {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-      setIsDarkMode(true);
-    }
+    setIsDarkMode(prev => {
+      const next = !prev;
+      if (next) {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+      }
+      return next;
+    });
   };
 
   const today = new Date();
   const currentMonth = today.getMonth() + 1;
   const currentDate = today.getDate();
 
-  // ★ シートのドラッグ操作（判定エリアを拡張済み）
   const halfOffset = windowHeight * 0.45;
 
   const handleTouchStart = (e) => {
@@ -506,7 +489,6 @@ export default function App() {
     sorted.forEach((item) => {
       const itemEndMins = timeToMinutes(item.endTime);
       
-      // 終了時刻ベースで現在時刻バーを挿入
       if (!isNowInjected && nowMins < itemEndMins) {
         elements.push(<CurrentTimeLine key="timeline-now" time={currentTime} />);
         isNowInjected = true;
@@ -570,7 +552,6 @@ export default function App() {
         </div>
       )}
 
-      {/* テーマ切り替えボタン */}
       <button 
         onClick={toggleTheme}
         className="fixed top-4 right-4 z-40 w-10 h-10 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-xl shadow-sm backdrop-blur-sm transition-colors"
@@ -579,7 +560,7 @@ export default function App() {
         {isDarkMode ? '🌙' : '☀️'}
       </button>
 
-      <div className="min-h-screen bg-[#F3EFE6] dark:bg-[#121212] transition-colors duration-300 flex justify-center font-serif p-4 sm:p-6 pb-48">
+      <div className="min-h-screen transition-colors duration-300 flex justify-center font-serif p-4 sm:p-6 pb-48">
         <div className="w-full max-w-sm relative">
           
           <div className="text-center mb-6 sm:mb-8 text-[#C63527] dark:text-[#FF8A80]">
@@ -623,7 +604,6 @@ export default function App() {
         </button>
       </div>
 
-      {/* ボトムシート */}
       <div 
         className={`fixed inset-0 z-50 flex flex-col justify-end font-serif ${activeSheet ? 'pointer-events-auto' : 'pointer-events-none'}`}
       >
@@ -637,7 +617,7 @@ export default function App() {
           style={{ transform: `translateY(${sheetTranslateY}px)` }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* ★ ドラッグ判定エリアを大幅に拡大（タイトル部分まで含む） */}
+          {/* ★ ドラッグ判定エリアを拡大（タイトル部分も含めて囲む） */}
           <div 
             className="w-full pt-4 pb-6 flex flex-col items-center cursor-grab active:cursor-grabbing shrink-0"
             onTouchStart={handleTouchStart}
@@ -645,7 +625,6 @@ export default function App() {
             onTouchEnd={handleTouchEnd}
           >
             <div className="w-16 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mb-4"></div>
-            
             <h3 className="text-xl font-bold text-center">
               {activeSheet === 'event' && <span className="text-[#C63527] dark:text-[#FF8A80]">確定している予定を追加</span>}
               {activeSheet === 'stock' && <span className="text-[#2D4E35] dark:text-[#A5D6A7]">いつかやりたいこと（ストック）</span>}
@@ -664,7 +643,6 @@ export default function App() {
                     onChange={(e) => { setNewTitle(e.target.value); handleTextareaResize(e); }}
                   />
                   
-                  {/* テンプレートエリア */}
                   <div className="mb-6 bg-black/5 dark:bg-white/5 p-3 rounded-xl">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
                       <span className="text-xs font-bold text-[#C63527]/80 dark:text-[#FF8A80]/80">よく使う予定（タップで自動入力）</span>
