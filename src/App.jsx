@@ -156,44 +156,39 @@ const EventCard = ({ id, startTime, endTime, title, type, onDelete, onClick }) =
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [fadeSplash, setFadeSplash] = useState(false);
-
-  // ★ ダークモード設定
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   const [schedule, setSchedule] = useState([]);
   const [customPool, setCustomPool] = useState([]);
   const [activeRange, setActiveRange] = useState({ start: "08:00", end: "23:00" });
+  
+  // ★ よく使う予定（テンプレート）のステート
+  const [eventTemplates, setEventTemplates] = useState([]);
 
   const [currentTime, setCurrentTime] = useState('');
 
-  // UI用ステート（ボトムシート＆FAB）
   const [isFabMenuOpen, setIsFabMenuOpen] = useState(false);
-  const [activeSheet, setActiveSheet] = useState(null); // 'event' | 'stock' | null
+  const [activeSheet, setActiveSheet] = useState(null); 
 
-  // ★ ボトムシートのスワイプダウン（ドラッグ）管理
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const touchStartY = useRef(0);
 
-  // 編集用ステート
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
 
-  // 新規追加用ステート
   const [newTitle, setNewTitle] = useState('');
   const [newStartTime, setNewStartTime] = useState('');
   const [newEndTime, setNewEndTime] = useState('');
   const [poolTitle, setPoolTitle] = useState('');
   const [poolDuration, setPoolDuration] = useState(30);
 
-  // 初期読み込み（テーマ、データ、時間更新）
   useEffect(() => {
     const fadeTimer = setTimeout(() => { setFadeSplash(true); }, 1500);
     const removeTimer = setTimeout(() => { setShowSplash(false); }, 2500);
 
-    // テーマの初期化
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       setIsDarkMode(true);
@@ -213,11 +208,19 @@ export default function App() {
     const savedSchedule = localStorage.getItem('my_schedule');
     const savedPool = localStorage.getItem('custom_pool');
     const savedRange = localStorage.getItem('active_range');
+    const savedTemplates = localStorage.getItem('event_templates');
     const lastOpenedDate = localStorage.getItem('last_opened_date');
     const todayStr = new Date().toLocaleDateString();
 
     if (savedPool) setCustomPool(JSON.parse(savedPool));
     if (savedRange) setActiveRange(JSON.parse(savedRange));
+    
+    // テンプレートの読み込み（なければ初期設定）
+    if (savedTemplates) {
+      setEventTemplates(JSON.parse(savedTemplates));
+    } else {
+      setEventTemplates(["ゼミ", "研究", "筋トレ", "アプリ開発"]);
+    }
 
     if (lastOpenedDate && lastOpenedDate !== todayStr) {
       setSchedule([]);
@@ -241,10 +244,19 @@ export default function App() {
       localStorage.setItem('my_schedule', JSON.stringify(schedule));
       localStorage.setItem('custom_pool', JSON.stringify(customPool));
       localStorage.setItem('active_range', JSON.stringify(activeRange));
+      localStorage.setItem('event_templates', JSON.stringify(eventTemplates));
     }
-  }, [schedule, customPool, activeRange, showSplash]);
+  }, [schedule, customPool, activeRange, eventTemplates, showSplash]);
 
-  // ★ ダークモード切り替え関数
+  useEffect(() => {
+    if (activeSheet || isFabMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [activeSheet, isFabMenuOpen]);
+
   const toggleTheme = () => {
     if (isDarkMode) {
       document.documentElement.classList.remove('dark');
@@ -261,45 +273,33 @@ export default function App() {
   const currentMonth = today.getMonth() + 1;
   const currentDate = today.getDate();
 
-  // ボトムシートのドラッグ制御
   const handleTouchStart = (e) => {
     touchStartY.current = e.touches[0].clientY;
     setIsDragging(true);
   };
-
   const handleTouchMove = (e) => {
-    const currentY = e.touches[0].clientY;
-    const diff = currentY - touchStartY.current;
-    if (diff > 0) { // 下方向のドラッグのみ許可
-      setDragY(diff);
-    }
+    const diff = e.touches[0].clientY - touchStartY.current;
+    if (diff > 0) setDragY(diff);
   };
-
   const handleTouchEnd = () => {
     setIsDragging(false);
-    if (dragY > 100) { // 100px以上下げたら閉じる
-      closeSheet();
-    } else {
-      setDragY(0); // 元の位置にスナップ
-    }
+    if (dragY > 100) closeSheet();
+    else setDragY(0);
   };
-
   const closeSheet = () => {
-    setDragY(window.innerHeight); // 画面外まで一気に下ろす
+    setDragY(window.innerHeight);
     setTimeout(() => {
       setActiveSheet(null);
-      setDragY(0); // 次開くときのためにリセット
+      setDragY(0);
     }, 300);
   };
 
-  // 隙間計算
   const getGaps = (currentSchedule) => {
     const sorted = [...currentSchedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
     const innerGaps = [];
     const outerGaps = [];
     const activeStart = timeToMinutes(activeRange.start);
     const activeEnd = timeToMinutes(activeRange.end);
-    
     const nowMins = timeToMinutes(currentTime);
     const effectiveStart = Math.max(activeStart, nowMins);
 
@@ -422,7 +422,6 @@ export default function App() {
     alert("現在の時刻から活動終了までの間に収まるタスクがストックにありませんでした。");
   };
 
-  // スケジュールと現在時刻（タイムライン）を描画
   const renderScheduleWithTimeline = () => {
     const sorted = [...schedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
     const nowMins = timeToMinutes(currentTime);
@@ -496,7 +495,6 @@ export default function App() {
         </div>
       )}
 
-      {/* ダークモードトグルボタン */}
       <button 
         onClick={toggleTheme}
         className="fixed top-4 right-4 z-40 w-10 h-10 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-xl shadow-sm backdrop-blur-sm transition-colors"
@@ -534,7 +532,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* FAB (Floating Action Button) */}
       <div className="fixed bottom-6 right-6 flex flex-col items-end z-40 font-serif">
         <div className={`flex flex-col items-end gap-3 mb-4 transition-all duration-300 origin-bottom-right ${isFabMenuOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'}`}>
           <button onClick={triggerCustomTask} className="bg-[#2D4E35] dark:bg-[#A5D6A7] text-white dark:text-gray-900 px-5 py-3 rounded-full shadow-lg font-bold text-sm">時間を有効活用する</button>
@@ -550,7 +547,6 @@ export default function App() {
         </button>
       </div>
 
-      {/* スワイプで閉じれるボトムシート */}
       {activeSheet && (
         <div className="fixed inset-0 z-50 flex items-end justify-center font-serif">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={closeSheet}></div>
@@ -560,7 +556,6 @@ export default function App() {
             style={{ transform: `translateY(${dragY > 0 ? dragY : 0}px)` }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* スワイプハンドル部分（ここを掴んで下げる） */}
             <div 
               className="w-full pt-2 pb-6 -mt-2 flex justify-center cursor-grab active:cursor-grabbing"
               onTouchStart={handleTouchStart}
@@ -576,11 +571,42 @@ export default function App() {
                 <form onSubmit={addNormalEvent}>
                   <textarea
                     placeholder="予定のタイトル"
-                    className="w-full mb-6 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] placeholder-[#C63527]/50 dark:placeholder-[#FF8A80]/50 focus:outline-none text-base resize-none overflow-hidden"
+                    className="w-full mb-4 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] placeholder-[#C63527]/50 dark:placeholder-[#FF8A80]/50 focus:outline-none text-base resize-none overflow-hidden"
                     rows={1}
                     value={newTitle}
                     onChange={(e) => { setNewTitle(e.target.value); handleTextareaResize(e); }}
                   />
+                  
+                  {/* ★ よく使う予定（テンプレート）エリア */}
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-[#C63527]/80 dark:text-[#FF8A80]/80">よく使う予定</span>
+                      {newTitle.trim() && !eventTemplates.includes(newTitle.trim()) && (
+                         <button 
+                           type="button"
+                           onClick={() => setEventTemplates([...eventTemplates, newTitle.trim()])}
+                           className="text-[10px] bg-[#C63527]/10 dark:bg-[#FF8A80]/10 text-[#C63527] dark:text-[#FF8A80] px-2 py-1 rounded font-bold"
+                         >
+                           ＋ 現在のタイトルを登録
+                         </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+                      {eventTemplates.map((temp, idx) => (
+                        <div key={idx} className="text-xs border border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] pl-3 pr-1 py-1 rounded-full flex items-center gap-1">
+                          <span className="cursor-pointer" onClick={() => setNewTitle(temp)}>{temp}</span>
+                          <button 
+                            type="button" 
+                            onClick={() => setEventTemplates(eventTemplates.filter(t => t !== temp))} 
+                            className="font-bold opacity-40 hover:opacity-100 p-1"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex gap-2 mb-8">
                     <input type="time" className="w-1/2 p-2 bg-transparent border-b-2 border-[#C63527] dark:border-[#FF8A80] text-[#C63527] dark:text-[#FF8A80] focus:outline-none" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
                     <span className="text-[#C63527] dark:text-[#FF8A80] self-center">〜</span>
