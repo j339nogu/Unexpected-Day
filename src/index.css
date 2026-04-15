@@ -1,6 +1,6 @@
 @import "tailwindcss";
+@custom-variant dark (&:is(.dark *));
 
 body {
-  background-color: #F3EFE6;
   touch-action: manipulation;
 }
