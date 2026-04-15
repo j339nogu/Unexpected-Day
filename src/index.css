@@ -1,13 +1,20 @@
 @import "tailwindcss";
-@custom-variant dark (&:is(.dark *));
 
-/* ライトモード時の大元の背景色（スクロールではみ出た部分） */
-html, body {
+/* 🌟 最新版Tailwind v4仕様：スマホ本体の設定を無視し、手動切り替えを強制する */
+@variant dark (&:where(.dark, .dark *));
+
+/* ライトモード時の大元の設定 */
+html {
   background-color: #F3EFE6;
-  touch-action: manipulation;
+  color-scheme: light; /* スマホの時計や電池アイコンを「黒」にする */
 }
 
-/* ダークモード時の大元の背景色 */
-html.dark, html.dark body {
+/* ダークモード時の大元の設定 */
+html.dark {
   background-color: #121212;
+  color-scheme: dark; /* スマホの時計や電池アイコンを「白」にする */
+}
+
+body {
+  touch-action: manipulation;
 }
