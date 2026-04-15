@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 
-// 時間帯の定義リスト
+// --- 時間帯の定義リスト ---
 const ALL = ['morning', 'day', 'afternoon', 'evening', 'night', 'midnight'];
 const OUTSIDE_DAY = ['morning', 'day', 'afternoon', 'evening'];
 const OPEN_HOURS = ['day', 'afternoon', 'evening', 'night'];
 const NIGHT_ONLY = ['evening', 'night', 'midnight'];
 
-// 所要時間と時間帯ごとに分類された「予想外のミッション」リスト（全56種）
+// --- 予想外のミッションリスト（全56種） ---
 const unexpectedMissions = {
   short: [
     { title: "目を閉じて、5分間だけ一切の思考を放棄する", duration: 15, slots: ALL },
@@ -84,7 +84,7 @@ const timeToMinutes = (timeStr) => {
 };
 
 const minutesToTime = (mins) => {
-  const h = Math.floor(mins / 60);
+  const h = Math.floor(mins / 60) % 24;
   const m = mins % 60;
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 };
@@ -98,34 +98,45 @@ const getSlotCategory = (minutes) => {
   return 'midnight';
 };
 
+// --- コンポーネント ---
 const EventCard = ({ id, startTime, endTime, title, type, onDelete, onClick }) => {
   const isUnexpected = type === 'unexpected';
+  const isCustom = type === 'custom';
+
+  let bgColor = 'bg-transparent';
+  let borderColor = 'border-[#C63527]';
+  let textColor = 'text-[#C63527]';
+  let btnColor = 'text-[#C63527] opacity-30 hover:opacity-100';
+
+  if (isUnexpected) {
+    bgColor = 'bg-[#C63527]';
+    textColor = 'text-white';
+    btnColor = 'text-white opacity-40 hover:opacity-100';
+  } else if (isCustom) {
+    bgColor = 'bg-[#2D4E35]';
+    borderColor = 'border-[#2D4E35]';
+    textColor = 'text-white';
+    btnColor = 'text-white opacity-40 hover:opacity-100';
+  }
+
   return (
     <div
       onClick={onClick}
-      className={`
-        relative w-full px-4 py-3 rounded-md border-2 mb-2 cursor-pointer transition-transform hover:scale-[1.01]
-        ${isUnexpected
-          ? 'bg-[#C63527] border-[#C63527] text-white'
-          : 'bg-transparent border-[#C63527] text-[#C63527]'
-        }
-      `}
+      className={`relative w-full px-4 py-3 rounded-md border-2 mb-2 cursor-pointer transition-transform hover:scale-[1.01] ${bgColor} ${borderColor} ${textColor}`}
     >
       <button 
         onClick={(e) => {
           e.stopPropagation();
           onDelete(id);
         }}
-        className={`absolute top-2 right-2 text-xs transition-opacity ${
-          isUnexpected ? 'text-white opacity-40 hover:opacity-100' : 'text-[#C63527] opacity-30 hover:opacity-100'
-        } p-2 -m-2`}
+        className={`absolute top-2 right-2 text-xs transition-opacity ${btnColor} p-2 -m-2`}
         aria-label="削除"
       >
         ✕
       </button>
 
       <div className="font-bold text-base sm:text-lg leading-tight mb-1 pr-6 break-words whitespace-pre-wrap">{title}</div>
-      <div className={`text-xs sm:text-sm ${isUnexpected ? 'opacity-90' : 'text-[#C63527]/80'}`}>
+      <div className={`text-xs sm:text-sm ${isUnexpected || isCustom ? 'opacity-90' : 'text-[#C63527]/80'}`}>
         {startTime}-{endTime}
       </div>
     </div>
@@ -136,40 +147,110 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [fadeSplash, setFadeSplash] = useState(false);
 
+  // データ用ステート
+  const [schedule, setSchedule] = useState([]);
+  const [customPool, setCustomPool] = useState([]);
+  const [activeRange, setActiveRange] = useState({ start: "08:00", end: "23:00" });
+
+  // UI用ステート（折りたたみ）
+  const [isScheduleFormOpen, setIsScheduleFormOpen] = useState(false);
+  const [isPoolFormOpen, setIsPoolFormOpen] = useState(false);
+
+  // 編集用ステート
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
 
+  // 新規追加用ステート
+  const [newTitle, setNewTitle] = useState('');
+  const [newStartTime, setNewStartTime] = useState('');
+  const [newEndTime, setNewEndTime] = useState('');
+  const [poolTitle, setPoolTitle] = useState('');
+  const [poolDuration, setPoolDuration] = useState(30);
+
   useEffect(() => {
-    const fadeTimer = setTimeout(() => {
-      setFadeSplash(true);
-    }, 1500);
+    const fadeTimer = setTimeout(() => { setFadeSplash(true); }, 1500);
+    const removeTimer = setTimeout(() => { setShowSplash(false); }, 2500);
 
-    const removeTimer = setTimeout(() => {
-      setShowSplash(false);
-    }, 2500);
+    const savedSchedule = localStorage.getItem('my_schedule');
+    const savedPool = localStorage.getItem('custom_pool');
+    const savedRange = localStorage.getItem('active_range');
+    const lastOpenedDate = localStorage.getItem('last_opened_date');
+    
+    const todayStr = new Date().toLocaleDateString();
 
-    return () => {
-      clearTimeout(fadeTimer);
-      clearTimeout(removeTimer);
-    };
+    if (savedPool) setCustomPool(JSON.parse(savedPool));
+    if (savedRange) setActiveRange(JSON.parse(savedRange));
+
+    if (lastOpenedDate && lastOpenedDate !== todayStr) {
+      setSchedule([]); // 日付が変わっていたら予定のみリセット
+    } else if (savedSchedule) {
+      setSchedule(JSON.parse(savedSchedule));
+    } else {
+      // 初期データ
+      setSchedule([
+        { id: 1, startTime: '09:00', endTime: '10:00', title: 'ミーティング', type: 'normal' },
+        { id: 2, startTime: '10:30', endTime: '12:00', title: '資料作成', type: 'normal' },
+        { id: 3, startTime: '13:00', endTime: '14:30', title: 'アプリ開発', type: 'normal' },
+        { id: 4, startTime: '17:30', endTime: '18:30', title: '夕食', type: 'normal' },
+      ]);
+    }
+    localStorage.setItem('last_opened_date', todayStr);
+
+    return () => { clearTimeout(fadeTimer); clearTimeout(removeTimer); };
   }, []);
+
+  // 保存処理
+  useEffect(() => {
+    if (!showSplash) {
+      localStorage.setItem('my_schedule', JSON.stringify(schedule));
+      localStorage.setItem('custom_pool', JSON.stringify(customPool));
+      localStorage.setItem('active_range', JSON.stringify(activeRange));
+    }
+  }, [schedule, customPool, activeRange, showSplash]);
 
   const today = new Date();
   const currentMonth = today.getMonth() + 1;
   const currentDate = today.getDate();
 
-  const [schedule, setSchedule] = useState([
-    { id: 1, startTime: '09:00', endTime: '10:00', title: 'ミーティング', type: 'normal' },
-    { id: 2, startTime: '10:30', endTime: '12:00', title: '資料作成', type: 'normal' },
-    { id: 3, startTime: '13:00', endTime: '14:30', title: 'アプリ開発', type: 'normal' },
-    { id: 4, startTime: '17:30', endTime: '18:30', title: '夕食', type: 'normal' },
-  ]);
+  // 隙間計算（予定と予定の間を最優先）
+  const getGaps = (currentSchedule) => {
+    const sorted = [...currentSchedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+    const innerGaps = [];
+    const outerGaps = [];
+    const activeStart = timeToMinutes(activeRange.start);
+    const activeEnd = timeToMinutes(activeRange.end);
 
-  const [newTitle, setNewTitle] = useState('');
-  const [newStartTime, setNewStartTime] = useState('');
-  const [newEndTime, setNewEndTime] = useState('');
+    if (sorted.length === 0) {
+      if (activeEnd - activeStart >= 15) outerGaps.push({ start: activeStart, end: activeEnd, duration: activeEnd - activeStart });
+      return { innerGaps, outerGaps };
+    }
+
+    const firstEventStart = timeToMinutes(sorted[0].startTime);
+    if (firstEventStart > activeStart) {
+      const gapEnd = Math.min(firstEventStart, activeEnd);
+      if (gapEnd - activeStart >= 15) outerGaps.push({ start: activeStart, end: gapEnd, duration: gapEnd - activeStart });
+    }
+
+    let lastEnd = timeToMinutes(sorted[0].endTime);
+    for (let i = 1; i < sorted.length; i++) {
+      const start = timeToMinutes(sorted[i].startTime);
+      if (start > lastEnd) {
+        const gapStart = Math.max(lastEnd, activeStart);
+        const gapEnd = Math.min(start, activeEnd);
+        if (gapEnd - gapStart >= 15) innerGaps.push({ start: gapStart, end: gapEnd, duration: gapEnd - gapStart });
+      }
+      lastEnd = Math.max(lastEnd, timeToMinutes(sorted[i].endTime));
+    }
+
+    if (activeEnd > lastEnd) {
+      const gapStart = Math.max(lastEnd, activeStart);
+      if (activeEnd - gapStart >= 15) outerGaps.push({ start: gapStart, end: activeEnd, duration: activeEnd - gapStart });
+    }
+
+    return { innerGaps, outerGaps };
+  };
 
   const addNormalEvent = (e) => {
     e.preventDefault();
@@ -189,14 +270,11 @@ export default function App() {
     };
 
     setSchedule([...schedule, newEvent]);
-    setNewTitle('');
-    setNewStartTime('');
-    setNewEndTime('');
+    setNewTitle(''); setNewStartTime(''); setNewEndTime('');
+    setIsScheduleFormOpen(false); // 追加したらフォームを閉じる
   };
 
-  const deleteEvent = (idToDelete) => {
-    setSchedule(schedule.filter(item => item.id !== idToDelete));
-  };
+  const deleteEvent = (idToDelete) => setSchedule(schedule.filter(item => item.id !== idToDelete));
 
   const startEditing = (item) => {
     setEditingId(item.id);
@@ -207,92 +285,99 @@ export default function App() {
 
   const saveEdit = (id) => {
     if (!editTitle || !editStartTime || !editEndTime) return;
-
     if (timeToMinutes(editStartTime) >= timeToMinutes(editEndTime)) {
       alert("終了時刻は開始時刻より後に設定してください。");
       return;
     }
-
-    setSchedule(schedule.map(item => 
-      item.id === id 
-        ? { ...item, title: editTitle, startTime: editStartTime, endTime: editEndTime }
-        : item
-    ));
+    setSchedule(schedule.map(item => item.id === id ? { ...item, title: editTitle, startTime: editStartTime, endTime: editEndTime } : item));
     setEditingId(null);
   };
 
+  const handleTextareaResize = (e) => {
+    e.target.style.height = 'auto'; 
+    e.target.style.height = `${e.target.scrollHeight}px`; 
+  };
+
   const triggerUnexpected = () => {
-    const sorted = [...schedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
-    const gaps = [];
-
-    for (let i = 0; i < sorted.length - 1; i++) {
-      const endCurrent = timeToMinutes(sorted[i].endTime);
-      const startNext = timeToMinutes(sorted[i + 1].startTime);
-      const gapDuration = startNext - endCurrent;
-      
-      if (gapDuration >= 15) {
-        gaps.push({ start: endCurrent, end: startNext, duration: gapDuration });
-      }
-    }
-
+    const { innerGaps, outerGaps } = getGaps(schedule);
+    const gaps = innerGaps.length > 0 ? innerGaps : outerGaps;
+    
     if (gaps.length === 0) {
-      alert("予定が詰まりすぎていて、予想外が入り込む隙がありません！");
+      alert("活動時間内に予想外が入り込む隙がありません！");
       return;
     }
 
     const randomGap = gaps[Math.floor(Math.random() * gaps.length)];
-    const targetSlotCategory = getSlotCategory(randomGap.end);
+    const targetSlotCategory = getSlotCategory(randomGap.start);
     
     let targetMissions = [];
     if (randomGap.duration >= 90) {
-      targetMissions = unexpectedMissions.extraLong.filter(m => m.duration <= randomGap.duration && m.slots.includes(targetSlotCategory));
+      targetMissions = unexpectedMissions.extraLong.filter(m => m.slots.includes(targetSlotCategory));
       if (targetMissions.length === 0) targetMissions = unexpectedMissions.long.filter(m => m.slots.includes(targetSlotCategory)); 
     } else if (randomGap.duration >= 60) {
-      targetMissions = unexpectedMissions.long.filter(m => m.duration <= randomGap.duration && m.slots.includes(targetSlotCategory));
+      targetMissions = unexpectedMissions.long.filter(m => m.slots.includes(targetSlotCategory));
     } else if (randomGap.duration >= 30) {
       targetMissions = unexpectedMissions.medium.filter(m => m.slots.includes(targetSlotCategory));
     } else {
       targetMissions = unexpectedMissions.short.filter(m => m.slots.includes(targetSlotCategory));
     }
     
-    if (targetMissions.length === 0) {
-       targetMissions = unexpectedMissions.short; 
-    }
+    if (targetMissions.length === 0) targetMissions = unexpectedMissions.short; 
 
     const randomMission = targetMissions[Math.floor(Math.random() * targetMissions.length)];
 
-    const unexpectedEvent = {
+    setSchedule([...schedule, {
       id: Date.now(),
       startTime: minutesToTime(randomGap.start),
       endTime: minutesToTime(randomGap.start + randomMission.duration),
       title: randomMission.title,
       type: 'unexpected'
-    };
+    }]);
+  };
 
-    setSchedule([...schedule, unexpectedEvent]);
+  const triggerCustomTask = () => {
+    if (customPool.length === 0) {
+      alert("まずは「ストック」にタスクを追加してください。");
+      return;
+    }
+
+    const { innerGaps, outerGaps } = getGaps(schedule);
+    const shuffledTasks = [...customPool].sort(() => 0.5 - Math.random());
+
+    // 1. まず予定の間（inner）を探す
+    for (const task of shuffledTasks) {
+      const targetGap = innerGaps.find(g => g.duration >= task.duration);
+      if (targetGap) {
+        setSchedule([...schedule, { id: Date.now(), startTime: minutesToTime(targetGap.start), endTime: minutesToTime(targetGap.start + task.duration), title: task.title, type: 'custom' }]);
+        return; 
+      }
+    }
+
+    // 2. なければ前後（outer）を探す
+    for (const task of shuffledTasks) {
+      const targetGap = outerGaps.find(g => g.duration >= task.duration);
+      if (targetGap) {
+        setSchedule([...schedule, { id: Date.now(), startTime: minutesToTime(targetGap.start), endTime: minutesToTime(targetGap.start + task.duration), title: task.title, type: 'custom' }]);
+        return; 
+      }
+    }
+
+    alert("活動時間の隙間に収まるタスクがストックにありませんでした。");
   };
 
   const sortedDisplaySchedule = [...schedule].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
-  // --- 自動リサイズ用のヘルパー関数 ---
-  const handleTextareaResize = (e) => {
-    e.target.style.height = 'auto'; // 一旦リセット
-    e.target.style.height = `${e.target.scrollHeight}px`; // 文字量に合わせて高さを再設定
-  };
-
   return (
     <>
       {showSplash && (
-        <div 
-          className={`fixed inset-0 z-50 bg-[#F3EFE6] flex items-center justify-center transition-opacity duration-1000 ${fadeSplash ? 'opacity-0' : 'opacity-100'}`}
-        >
+        <div className={`fixed inset-0 z-50 bg-[#F3EFE6] flex items-center justify-center transition-opacity duration-1000 ${fadeSplash ? 'opacity-0' : 'opacity-100'}`}>
           <p className="text-[#C63527] text-2xl leading-loose [writing-mode:vertical-rl] font-bold tracking-widest font-serif">
             私の予定は、<br />予想外。
           </p>
         </div>
       )}
 
-      <div className="min-h-screen bg-[#F3EFE6] flex justify-center font-serif p-4 sm:p-6 pb-24">
+      <div className="min-h-screen bg-[#F3EFE6] flex justify-center font-serif p-4 sm:p-6 pb-48">
         <div className="w-full max-w-sm relative">
           
           <div className="text-center mb-6 sm:mb-8 text-[#C63527]">
@@ -300,104 +385,108 @@ export default function App() {
             <h1 className="text-4xl sm:text-5xl font-bold mt-1">{currentDate}</h1>
           </div>
 
-          <form onSubmit={addNormalEvent} className="mb-6 sm:mb-8 p-3 sm:p-4 border-2 border-dashed border-[#C63527]/50 rounded-md">
-            <div className="text-xs sm:text-sm text-[#C63527] mb-3 font-bold">＋ 予定を追加</div>
-            
-            {/* 変更点1：追加フォームの input を textarea に変更 */}
-            <textarea
-              placeholder="予定のタイトル"
-              className="w-full mb-3 p-2 bg-transparent border-b border-[#C63527] text-[#C63527] placeholder-[#C63527]/50 focus:outline-none text-sm sm:text-base resize-none overflow-hidden"
-              rows={1}
-              value={newTitle}
-              onChange={(e) => {
-                setNewTitle(e.target.value);
-                handleTextareaResize(e);
-              }}
-            />
-            
-            <div className="flex gap-1 sm:gap-2 mb-4">
-              <input
-                type="time"
-                className="w-1/2 p-2 bg-transparent border-b border-[#C63527] text-[#C63527] focus:outline-none text-sm sm:text-base"
-                value={newStartTime}
-                onChange={(e) => setNewStartTime(e.target.value)}
-              />
-              <span className="text-[#C63527] self-center">〜</span>
-              <input
-                type="time"
-                className="w-1/2 p-2 bg-transparent border-b border-[#C63527] text-[#C63527] focus:outline-none text-sm sm:text-base"
-                value={newEndTime}
-                onChange={(e) => setNewEndTime(e.target.value)}
-              />
+          {/* 活動時間の指定 */}
+          <div className="mb-6 p-3 border border-[#C63527]/30 rounded flex items-center justify-between text-[#C63527] bg-[#F3EFE6]">
+            <span className="text-xs font-bold">活動時間</span>
+            <div className="flex gap-2 items-center">
+              <input type="time" className="bg-transparent border-b border-[#C63527] outline-none text-sm" value={activeRange.start} onChange={e => setActiveRange({...activeRange, start: e.target.value})} />
+              <span>~</span>
+              <input type="time" className="bg-transparent border-b border-[#C63527] outline-none text-sm" value={activeRange.end} onChange={e => setActiveRange({...activeRange, end: e.target.value})} />
             </div>
-            <button type="submit" className="w-full py-2 border-2 border-[#C63527] text-[#C63527] font-bold rounded-md hover:bg-[#C63527] hover:text-white transition-colors text-sm sm:text-base">
-              追加する
-            </button>
-          </form>
+          </div>
 
+          {/* 予定追加フォーム（アコーディオン） */}
+          <div className="mb-4 border-2 border-dashed border-[#C63527]/40 rounded-md transition-all overflow-hidden">
+            <button 
+              type="button" 
+              onClick={() => setIsScheduleFormOpen(!isScheduleFormOpen)} 
+              className="w-full p-4 flex justify-between items-center text-[#C63527] bg-[#F3EFE6]"
+            >
+              <span className="text-xs font-bold">＋ 確定している予定を追加</span>
+              <span className="font-bold">{isScheduleFormOpen ? '−' : '＋'}</span>
+            </button>
+            {isScheduleFormOpen && (
+              <form onSubmit={addNormalEvent} className="p-4 pt-0">
+                <textarea
+                  placeholder="予定のタイトル"
+                  className="w-full mb-3 p-2 bg-transparent border-b border-[#C63527] text-[#C63527] placeholder-[#C63527]/50 focus:outline-none text-sm sm:text-base resize-none overflow-hidden"
+                  rows={1}
+                  value={newTitle}
+                  onChange={(e) => { setNewTitle(e.target.value); handleTextareaResize(e); }}
+                />
+                <div className="flex gap-1 sm:gap-2 mb-4">
+                  <input type="time" className="w-1/2 p-2 bg-transparent border-b border-[#C63527] text-[#C63527] focus:outline-none text-sm sm:text-base" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                  <span className="text-[#C63527] self-center">〜</span>
+                  <input type="time" className="w-1/2 p-2 bg-transparent border-b border-[#C63527] text-[#C63527] focus:outline-none text-sm sm:text-base" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                </div>
+                <button type="submit" className="w-full py-2 border-2 border-[#C63527] text-[#C63527] font-bold rounded-md hover:bg-[#C63527] hover:text-white transition-colors text-sm sm:text-base">
+                  追加する
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* タスクストック（アコーディオン） */}
+          <div className="mb-8 border-2 border-[#2D4E35]/40 rounded-md text-[#2D4E35] transition-all overflow-hidden">
+            <button 
+              type="button" 
+              onClick={() => setIsPoolFormOpen(!isPoolFormOpen)} 
+              className="w-full p-4 flex justify-between items-center bg-[#F3EFE6]"
+            >
+              <span className="text-xs font-bold">＋ いつかやりたいこと（ストック）</span>
+              <span className="font-bold">{isPoolFormOpen ? '−' : '＋'}</span>
+            </button>
+            {isPoolFormOpen && (
+              <div className="p-4 pt-0">
+                <form onSubmit={(e) => { e.preventDefault(); if(poolTitle){ setCustomPool([...customPool, { id: Date.now(), title: poolTitle, duration: parseInt(poolDuration) }]); setPoolTitle(''); } }}>
+                  <input className="w-full bg-transparent border-b border-[#2D4E35] mb-3 p-1 outline-none" placeholder="タスク名" value={poolTitle} onChange={e => setPoolTitle(e.target.value)} />
+                  <div className="flex items-center gap-3">
+                    <select className="bg-transparent border-b border-[#2D4E35] outline-none text-sm" value={poolDuration} onChange={e => setPoolDuration(e.target.value)}>
+                      <option value="15">15分</option><option value="30">30分</option><option value="60">60分</option><option value="90">90分</option>
+                    </select>
+                    <button type="submit" className="ml-auto font-bold border border-[#2D4E35] px-3 py-1 rounded">ストック</button>
+                  </div>
+                </form>
+                {customPool.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {customPool.map(t => (
+                      <div key={t.id} className="text-[10px] border border-[#2D4E35] px-2 py-1 rounded-full flex items-center gap-1">
+                        <span>{t.title}({t.duration}分)</span>
+                        <button type="button" onClick={() => setCustomPool(customPool.filter(x => x.id !== t.id))} className="hover:text-red-500 font-bold ml-1">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* スケジュール表示 */}
           <div className="flex flex-col">
-            {sortedDisplaySchedule.map((item) => (
-              editingId === item.id ? (
-                <div
-                  key={item.id}
-                  className={`w-full px-4 py-3 rounded-md border-2 mb-2 ${
-                    item.type === 'unexpected'
-                      ? 'bg-[#C63527] border-[#C63527] text-white'
-                      : 'bg-transparent border-[#C63527] text-[#C63527]'
-                  }`}
-                >
-                  
-                  {/* 変更点2：編集フォームの input を textarea に変更 */}
+            {sortedDisplaySchedule.map((item) => {
+              const isUnexpected = item.type === 'unexpected';
+              const isCustom = item.type === 'custom';
+              const editBg = isUnexpected ? 'bg-[#C63527] border-[#C63527] text-white' : isCustom ? 'bg-[#2D4E35] border-[#2D4E35] text-white' : 'bg-transparent border-[#C63527] text-[#C63527]';
+              const saveBtnClass = isUnexpected || isCustom ? 'border-white hover:bg-white hover:text-[#C63527]' : 'border-[#C63527] hover:bg-[#C63527] hover:text-white';
+
+              return editingId === item.id ? (
+                <div key={item.id} className={`w-full px-4 py-3 rounded-md border-2 mb-2 ${editBg}`}>
                   <textarea
                     value={editTitle}
                     className="w-full font-bold text-base sm:text-lg bg-transparent border-b border-current focus:outline-none mb-3 placeholder-current opacity-90 resize-none overflow-hidden"
                     placeholder="予定のタイトル"
                     rows={1}
-                    onChange={(e) => {
-                      setEditTitle(e.target.value);
-                      handleTextareaResize(e);
-                    }}
-                    // 編集開始時に、既に入っている文字量に合わせて高さを自動設定する
-                    ref={(element) => {
-                      if (element) {
-                        element.style.height = 'auto';
-                        element.style.height = `${element.scrollHeight}px`;
-                      }
-                    }}
+                    onChange={(e) => { setEditTitle(e.target.value); handleTextareaResize(e); }}
+                    ref={(element) => { if (element) { element.style.height = 'auto'; element.style.height = `${element.scrollHeight}px`; } }}
                   />
-
                   <div className="flex gap-2 items-center mb-4 text-xs sm:text-sm opacity-90">
-                    <input
-                      type="time"
-                      value={editStartTime}
-                      onChange={(e) => setEditStartTime(e.target.value)}
-                      className="w-1/2 bg-transparent border-b border-current focus:outline-none"
-                    />
+                    <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)} className="w-1/2 bg-transparent border-b border-current focus:outline-none" />
                     <span>〜</span>
-                    <input
-                      type="time"
-                      value={editEndTime}
-                      onChange={(e) => setEditEndTime(e.target.value)}
-                      className="w-1/2 bg-transparent border-b border-current focus:outline-none"
-                    />
+                    <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="w-1/2 bg-transparent border-b border-current focus:outline-none" />
                   </div>
                   <div className="flex justify-end gap-3">
-                    <button 
-                      onClick={() => setEditingId(null)} 
-                      className="text-xs opacity-70 hover:opacity-100"
-                    >
-                      キャンセル
-                    </button>
-                    <button
-                      onClick={() => saveEdit(item.id)}
-                      className={`text-xs font-bold px-3 py-1 border rounded transition-colors ${
-                        item.type === 'unexpected'
-                          ? 'border-white hover:bg-white hover:text-[#C63527]'
-                          : 'border-[#C63527] hover:bg-[#C63527] hover:text-white'
-                      }`}
-                    >
-                      保存
-                    </button>
+                    <button onClick={() => setEditingId(null)} className="text-xs opacity-70 hover:opacity-100">キャンセル</button>
+                    <button onClick={() => saveEdit(item.id)} className={`text-xs font-bold px-3 py-1 border rounded transition-colors ${saveBtnClass}`}>保存</button>
                   </div>
                 </div>
               ) : (
@@ -412,16 +501,23 @@ export default function App() {
                   onClick={() => startEditing(item)}
                 />
               )
-            ))}
+            })}
           </div>
 
-          <div className="mt-8 flex justify-end text-[#C63527]">
-            <p className="text-xs sm:text-sm leading-loose [writing-mode:vertical-rl] font-bold tracking-widest">
+          <div className="mt-12 flex justify-end text-[#C63527]">
+            <p className="text-xs sm:text-sm leading-loose [writing-mode:vertical-rl] font-bold tracking-widest opacity-80">
               私の予定は、<br />予想外。
             </p>
           </div>
 
-          <div className="fixed bottom-6 left-0 right-0 flex justify-center pointer-events-none px-4">
+          {/* 固定操作ボタン */}
+          <div className="fixed bottom-6 left-0 right-0 flex flex-col items-center gap-3 px-4 pointer-events-none">
+            <button
+              onClick={triggerCustomTask}
+              className="pointer-events-auto w-full max-w-sm bg-[#2D4E35] text-white px-4 sm:px-6 py-3 sm:py-4 rounded-full font-bold shadow-lg border-2 border-[#2D4E35] hover:bg-white hover:text-[#2D4E35] transition-all transform hover:scale-105 text-sm sm:text-base"
+            >
+              時間を有効活用する
+            </button>
             <button
               onClick={triggerUnexpected}
               className="pointer-events-auto w-full max-w-sm bg-[#C63527] text-white px-4 sm:px-6 py-3 sm:py-4 rounded-full font-bold shadow-lg border-2 border-[#C63527] hover:bg-white hover:text-[#C63527] transition-all transform hover:scale-105 text-sm sm:text-base"
