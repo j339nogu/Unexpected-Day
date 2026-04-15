@@ -98,20 +98,6 @@ const getSlotCategory = (minutes) => {
   return 'midnight';
 };
 
-// --- ★ HTMLのテーマカラーメタタグを書き換える関数 ---
-const updateThemeColorMeta = (isDark) => {
-  let metaThemeColor = document.querySelector('meta[name="theme-color"]');
-  if (!metaThemeColor) {
-    metaThemeColor = document.createElement('meta');
-    metaThemeColor.name = "theme-color";
-    document.head.appendChild(metaThemeColor);
-  }
-  // 背景色を切り替え
-  metaThemeColor.setAttribute('content', isDark ? '#121212' : '#F3EFE6');
-  // スマホのステータスバー（時計など）の色を強制的に反転させる
-  document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
-};
-
 // --- コンポーネント：タイムライン ---
 const CurrentTimeLine = ({ time }) => (
   <div className="flex items-center w-full my-3 text-red-500 dark:text-red-400 animate-pulse relative z-0">
@@ -201,6 +187,23 @@ export default function App() {
   const [poolTitle, setPoolTitle] = useState('');
   const [poolDuration, setPoolDuration] = useState(30);
 
+  // ★ 強制的に大元の背景色とメタタグを書き換える処理
+  useEffect(() => {
+    // スクロール外の余白（body）の色を直接指定
+    document.body.style.backgroundColor = isDarkMode ? '#121212' : '#F3EFE6';
+    document.body.style.color = isDarkMode ? 'white' : 'black';
+    document.documentElement.style.colorScheme = isDarkMode ? 'dark' : 'light';
+
+    // スマホ上部の時計などの色（メタタグ）を変更
+    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement('meta');
+      metaThemeColor.name = "theme-color";
+      document.head.appendChild(metaThemeColor);
+    }
+    metaThemeColor.setAttribute('content', isDarkMode ? '#121212' : '#F3EFE6');
+  }, [isDarkMode]);
+
   useEffect(() => {
     setWindowHeight(window.innerHeight);
 
@@ -208,17 +211,12 @@ export default function App() {
     const removeTimer = setTimeout(() => { setShowSplash(false); }, 2500);
 
     const savedTheme = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
-    // ★ 初回読み込み時にテーマを反映し、HTMLのメタタグも更新する
-    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
-      updateThemeColorMeta(true);
     } else {
       setIsDarkMode(false);
       document.documentElement.classList.remove('dark');
-      updateThemeColorMeta(false);
     }
 
     const updateTime = () => {
@@ -287,18 +285,15 @@ export default function App() {
     return () => { document.body.style.overflow = ''; };
   }, [activeSheet, isFabMenuOpen]);
 
-  // ★ テーマ切り替え時にHTMLメタタグを更新する
   const toggleTheme = () => {
     if (isDarkMode) {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
       setIsDarkMode(false);
-      updateThemeColorMeta(false);
     } else {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
       setIsDarkMode(true);
-      updateThemeColorMeta(true);
     }
   };
 
@@ -306,7 +301,7 @@ export default function App() {
   const currentMonth = today.getMonth() + 1;
   const currentDate = today.getDate();
 
-  // ボトムシートのドラッグ操作
+  // ★ シートのドラッグ操作（判定エリアを拡張済み）
   const halfOffset = windowHeight * 0.45;
 
   const handleTouchStart = (e) => {
@@ -511,6 +506,7 @@ export default function App() {
     sorted.forEach((item) => {
       const itemEndMins = timeToMinutes(item.endTime);
       
+      // 終了時刻ベースで現在時刻バーを挿入
       if (!isNowInjected && nowMins < itemEndMins) {
         elements.push(<CurrentTimeLine key="timeline-now" time={currentTime} />);
         isNowInjected = true;
@@ -612,7 +608,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* FAB */}
       <div className="fixed bottom-6 right-6 flex flex-col items-end z-40 font-serif">
         <div className={`flex flex-col items-end gap-3 mb-4 transition-all duration-300 origin-bottom-right ${isFabMenuOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'}`}>
           <button onClick={triggerCustomTask} className="bg-[#2D4E35] dark:bg-[#A5D6A7] text-white dark:text-gray-900 px-5 py-3 rounded-full shadow-lg font-bold text-sm">時間を有効活用する</button>
@@ -628,7 +623,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* 完全にCSS transformのみで制御する滑らかなボトムシート */}
+      {/* ボトムシート */}
       <div 
         className={`fixed inset-0 z-50 flex flex-col justify-end font-serif ${activeSheet ? 'pointer-events-auto' : 'pointer-events-none'}`}
       >
@@ -642,21 +637,24 @@ export default function App() {
           style={{ transform: `translateY(${sheetTranslateY}px)` }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* ドラッグ用ハンドル部分 */}
+          {/* ★ ドラッグ判定エリアを大幅に拡大（タイトル部分まで含む） */}
           <div 
-            className="w-full pt-4 pb-4 flex justify-center cursor-grab active:cursor-grabbing shrink-0"
+            className="w-full pt-4 pb-6 flex flex-col items-center cursor-grab active:cursor-grabbing shrink-0"
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
           >
-            <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
+            <div className="w-16 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mb-4"></div>
+            
+            <h3 className="text-xl font-bold text-center">
+              {activeSheet === 'event' && <span className="text-[#C63527] dark:text-[#FF8A80]">確定している予定を追加</span>}
+              {activeSheet === 'stock' && <span className="text-[#2D4E35] dark:text-[#A5D6A7]">いつかやりたいこと（ストック）</span>}
+            </h3>
           </div>
           
-          {/* スクロール可能なコンテンツエリア */}
           <div className="flex-1 overflow-y-auto px-6 pb-12 overscroll-contain">
             {activeSheet === 'event' && (
               <div>
-                <h3 className="text-lg font-bold text-[#C63527] dark:text-[#FF8A80] mb-4">確定している予定を追加</h3>
                 <form onSubmit={addNormalEvent}>
                   <textarea
                     placeholder="予定のタイトル"
@@ -666,7 +664,7 @@ export default function App() {
                     onChange={(e) => { setNewTitle(e.target.value); handleTextareaResize(e); }}
                   />
                   
-                  {/* よく使う予定（テンプレート）エリア */}
+                  {/* テンプレートエリア */}
                   <div className="mb-6 bg-black/5 dark:bg-white/5 p-3 rounded-xl">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
                       <span className="text-xs font-bold text-[#C63527]/80 dark:text-[#FF8A80]/80">よく使う予定（タップで自動入力）</span>
@@ -712,7 +710,6 @@ export default function App() {
 
             {activeSheet === 'stock' && (
               <div>
-                <h3 className="text-lg font-bold text-[#2D4E35] dark:text-[#A5D6A7] mb-4">いつかやりたいこと（ストック）</h3>
                 <form onSubmit={(e) => { e.preventDefault(); if(poolTitle){ setCustomPool([...customPool, { id: Date.now(), title: poolTitle, duration: parseInt(poolDuration) }]); setPoolTitle(''); } }}>
                   <input className="w-full mb-6 p-2 bg-transparent border-b-2 border-[#2D4E35] dark:border-[#A5D6A7] text-[#2D4E35] dark:text-[#A5D6A7] placeholder-[#2D4E35]/50 dark:placeholder-[#A5D6A7]/50 focus:outline-none text-base" placeholder="タスク名" value={poolTitle} onChange={e => setPoolTitle(e.target.value)} />
                   <div className="flex gap-4 mb-8">
