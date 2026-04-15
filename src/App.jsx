@@ -24,7 +24,7 @@ const unexpectedMissions = {
     { title: "スマホの連絡先をランダムにスクロールし、止まった人のことを3分間だけ思い出す", duration: 15, slots: NIGHT_ONLY },
     { title: "鏡の前で、今まで一度もしたことがないような最高の笑顔を1分間キープする", duration: 15, slots: ALL },
     { title: "過去の自分のSNSを一番下までスクロールし、当時の自分に心の中でツッコミを入れる", duration: 15, slots: NIGHT_ONLY },
-    { title: "家の中にある「一番赤いもの」と「一番青いもの」を探して並べる", duration: 15, slots: ALL },
+    { title: "近くにある「一番赤いもの」と「一番青いもの」を探して並べる", duration: 15, slots: ALL },
   ],
   medium: [
     { title: "一番近くのコンビニで、今まで一度も買ったことのない飲み物を買う", duration: 30, slots: ALL },
