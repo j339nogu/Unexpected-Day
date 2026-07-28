@@ -1,16 +1,48 @@
-# React + Vite
+# [私の予定は、予想外。]
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[「ぽっかりと空いた時間、ついスマホを触ってダラダラ過ごしてしまう…」
+そんな悩みから生まれたのが、この1日スケジュールアプリです。
+スケジュールの隙間時間に「予想外のイベント（ミッション）」をランダムに発生させることで、日常のちょっとした時間をアクティブに、そして少しだけ特別なものに変えるお手伝いをします。]
 
-Currently, two official plugins are available:
+🌐 **Live Demo:** [https://unexpected-day-orcin.vercel.app/](https://unexpected-day-orcin.vercel.app/)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 技術スタック
 
-## React Compiler
+- **UIライブラリ:** React
+- **ビルドツール:** Vite
+- **ホスティング:** Vercel
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## ⚙️ ローカルでのセットアップ
 
-## Expanding the ESLint configuration
+このプロジェクトを手元で動かすための手順です。
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### 1. 依存関係のインストール
+
+```bash
+npm install
+# または yarn install / pnpm install
+```
+
+### 2. 開発サーバーの起動
+
+```bash
+npm run dev
+```
+
+コマンド実行後、ブラウザで `http://localhost:5173` にアクセスして動作を確認できます。
+
+## 📦 ビルドとデプロイ
+
+本番環境用のビルドを作成する場合は以下のコマンドを実行します。
+
+```bash
+npm run build
+```
+
+このプロジェクトはVercelと連携しており、GitHubの対象ブランチに変更をプッシュすることで自動的にデプロイが行われます。
+
+---
+
+> **Note:** このプロジェクトは `create-vite` を使用してセットアップされています。詳細な公式ドキュメントは以下のリンクをご参照ください。
+> - [Vite 公式ドキュメント](https://ja.vitejs.dev/)
+> - [React 公式ドキュメント](https://ja.react.dev/)
